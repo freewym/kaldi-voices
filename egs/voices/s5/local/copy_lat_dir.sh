@@ -48,6 +48,6 @@ $cmd --max-jobs-run $max_jobs_run JOB=1:$nj $dir/log/copy_out_lattices.JOB.log \
   "scp:utils/filter_scp.pl ${data}/split$nj/JOB/utt2spk $dir/lat_out.scp |" \
   "ark:| gzip -c > $dir/lat.JOB.gz" || exit 1
 
-rm $dir/lat_tmp.* $dir/lat_out.scp
+rm $dir/lat_tmp.* #$dir/lat_out.scp
 
 echo $nj > $dir/num_jobs

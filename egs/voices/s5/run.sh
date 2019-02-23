@@ -197,24 +197,11 @@ if [ $stage -le 14 ]; then
     unzip rirs_noises.zip
   fi
 
-  # Make a version with reverberated speech
-  rvb_opts=()
-  rvb_opts+=(--rir-set-parameters "1.0, RIRS_NOISES/simulated_rirs/smallroom/rir_list")
-  # Make a reverberated version of the train set.  Note that we don't add any
-  # additive noise here.
-  steps/data/reverberate_data_dir.py \
-    "${rvb_opts[@]}" \
-    --speech-rvb-probability 1 \
-    --prefix "reverb" \
-    --pointsource-noise-addition-probability 0 \
-    --isotropic-noise-addition-probability 0 \
-    --num-replications 1 \
-    --source-sampling-rate 16000 \
-    data/train data/train_reverb
-  utils/data/get_utt2dur.sh data/train_reverb
-
   # Prepare mx6 corpus for augmenting data with babble speech
   local/make_mx6.sh /export/corpora/LDC/LDC2013S03/mx6_speech data
+  steps/make_mfcc.sh --nj 16 --cmd "$train_cmd" --write-utt2num-frames true data/mx6_mic
+  utils/fix_data_dir.sh data/mx6_mic
+  awk -v frame_shift=0.01 '{print $1, $2*frame_shift;}' data/mx6_mic/utt2num_frames > data/mx6_mic/reco2dur
   
   # Prepare the MUSAN corpus, which consists of music, speech, and noise
   # suitable for augmentation.
@@ -225,34 +212,54 @@ if [ $stage -le 14 ]; then
   for name in noise music; do
     utils/data/get_reco2dur.sh data/musan_${name}
   done
-  utils/data/get_reco2dur.sh data/mx6_mic
 
   # Augment with musan_noise
   steps/data/augment_data_dir_for_asr.py --utt-prefix "noise" --fg-interval 1 --fg-snrs "15:10:5:0" --fg-noise-dir "data/musan_noise" data/train data/train_noise
-  utils/data/get_utt2dur.sh data/train_noise
+  cat data/train/utt2dur | awk '{print "noise_"$0}' >data/train_noise/utt2dur
+  #utils/data/get_utt2dur.sh data/train_noise
   # Augment with musan_music
   steps/data/augment_data_dir_for_asr.py --utt-prefix "music" --bg-snrs "15:10:8:5" --num-bg-noises "1" --bg-noise-dir "data/musan_music" data/train data/train_music
-  utils/data/get_utt2dur.sh data/train_music
+  cat data/train/utt2dur | awk '{print "music_"$0}' >data/train_music/utt2dur
+  #utils/data/get_utt2dur.sh data/train_music
   # Augment with mx6_speech
   steps/data/augment_data_dir_for_asr.py --utt-prefix "babble" --bg-snrs "20:17:15:13" --num-bg-noises "3:4:5:6:7" --bg-noise-dir "data/mx6_mic" data/train data/train_babble
-  utils/data/get_utt2dur.sh data/train_babble
+  cat data/train/utt2dur | awk '{print "babble_"$0}' >data/train_babble/utt2dur
+  #utils/data/get_utt2dur.sh data/train_babble
+
+  # Make a version with reverberated speech
+  rvb_opts=()
+  rvb_opts+=(--rir-set-parameters "0.5, RIRS_NOISES/simulated_rirs/smallroom/rir_list")
+  rvb_opts+=(--rir-set-parameters "0.5, RIRS_NOISES/simulated_rirs/mediumroom/rir_list")
+  # Make a reverberated version of the train set.  Note that we don't add any
+  # additive noise here.
+  seed=0
+  for name in noise music babble; do
+    steps/data/reverberate_data_dir.py \
+      "${rvb_opts[@]}" \
+      --speech-rvb-probability 1 \
+      --prefix "rev" \
+      --pointsource-noise-addition-probability 0 \
+      --isotropic-noise-addition-probability 0 \
+      --num-replications 1 \
+      --source-sampling-rate 16000 \
+      --random-seed $seed \
+      data/train_$name data/train_${name}_reverb
+    cat data/train_$name/utt2dur | awk '{print "rev1_"$0}' >data/train_${name}_reverb/utt2dur
+    seed=$((seed + 1))
+  done
 fi
 
 if [ $stage -le 15 ]; then
   # Now make MFCC features
-  for name in reverb noise music babble; do
-    steps/make_mfcc.sh --nj 16 --cmd "$train_cmd" --write-utt2num-frames true \
-      data/train_$name || exit 1;
-    steps/compute_cmvn_stats.sh data/train_$name
-    utils/fix_data_dir.sh data/train_$name
-    utils/validate_data_dir.sh data/train_$name
+  for name in noise music babble; do
+    steps/make_mfcc.sh --nj 16 --cmd "$train_cmd" \
+      data/train_${name}_reverb || exit 1;
+    steps/compute_cmvn_stats.sh data/train_${name}_reverb
+    utils/fix_data_dir.sh data/train_${name}_reverb
+    utils/validate_data_dir.sh data/train_${name}_reverb
   done
 fi
 exit 0
-
-if [ $stage -le 16 ]; then
-  utils/combine_data.sh data/train_combined data/train data/train_{reverb,noise,music,babble}
-fi
 
 #if [ $stage -le 14 ]; then
 #  # train and test nnet3 tdnn models on the entire data with data-cleaning.

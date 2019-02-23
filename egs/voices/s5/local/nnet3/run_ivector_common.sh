@@ -12,7 +12,8 @@ stage=0
 train_set=train
 combined_train_set=train_combined
 test_sets="dev"
-aug_prefix="reverb noise music speech"
+aug_affix="noise_reverb music_reverb babble_reverb"
+aug_prefix="rev1_noise rev1_music rev1_babble"
 nj=30
 gmm=tri4
 
@@ -150,64 +151,56 @@ if [ $stage -le 6 ]; then
 fi
 
 if [ $stage -le 7 ]; then
-  for name in $aug_prefix; do
-    echo "$0: preparing directory for low-resolution speed-perturbed ${train_set}_${name} (for alignment)"
-    utils/data/perturb_data_dir_speed_3way.sh data/${train_set}_${name} data/${train_set}_${name}_sp
-    echo "$0: making MFCC features for low-resolution speed-perturbed ${train_set}_${name} data"
-    steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj data/${train_set}_${name}_sp || exit 1;
-    steps/compute_cmvn_stats.sh data/${train_set}_${name}_sp || exit 1;
-    utils/fix_data_dir.sh data/${train_set}_${name}_sp || exit 1;
-  done
-  eval utils/combine_data.sh data/${combined_train_set}_sp data/${train_set}_sp \
-    data/${train_set}_{$(echo $aug_prefix | sed 's/ /,/g')}_sp
+  eval utils/combine_data.sh data/${combined_train_set} data/${train_set}_sp \
+    data/${train_set}_{$(echo $aug_affix | sed 's/ /,/g')}
 fi
 
 if [ $stage -le 8 ]; then
-  for name in $aug_prefix; do
-    echo "$0: creating high-resolution MFCC features for ${train_set}_${name}_sp data"
-    mfccdir=data/${train_set}_${name}_sp_hires/data
+  for name in $aug_affix; do
+    echo "$0: creating high-resolution MFCC features for ${train_set}_${name}"
+    mfccdir=data/${train_set}_${name}_hires/data
     if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $mfccdir/storage ]; then
       utils/create_split_dir.pl /export/b1{5,6,7,8}/$USER/kaldi-data/egs/voices-$(date +'%m_%d_%H_%M')/s5/$mfccdir/storage $mfccdir/storage
     fi
-    utils/copy_data_dir.sh data/${train_set}_${name}_sp data/${train_set}_${name}_sp_hires
+    utils/copy_data_dir.sh data/${train_set}_${name} data/${train_set}_${name}_hires
 
-    utils/data/perturb_data_dir_volume.sh data/${train_set}_${name}_sp_hires || exit 1;
+    utils/data/perturb_data_dir_volume.sh data/${train_set}_${name}_hires || exit 1;
     steps/make_mfcc.sh --nj $nj --mfcc-config conf/mfcc_hires.conf \
-      --cmd "$train_cmd" data/${train_set}_${name}_sp_hires || exit 1;
-    steps/compute_cmvn_stats.sh data/${train_set}_${name}_sp_hires || exit 1;
-    utils/fix_data_dir.sh data/${train_set}_${name}_sp_hires || exit 1;
+      --cmd "$train_cmd" data/${train_set}_${name}_hires || exit 1;
+    steps/compute_cmvn_stats.sh data/${train_set}_${name}_hires || exit 1;
+    utils/fix_data_dir.sh data/${train_set}_${name}_hires || exit 1;
   done
-  eval utils/combine_data.sh data/${combined_train_set}_sp_hires data/${train_set}_sp_hires \
-    data/${train_set}_{$(echo $aug_prefix | sed 's/ /,/g')}_sp_hires
+  eval utils/combine_data.sh data/${combined_train_set}_hires data/${train_set}_sp_hires \
+    data/${train_set}_{$(echo $aug_affix | sed 's/ /,/g')}_hires
 fi
 
 if [ $stage -le 9 ]; then
-  combined_ivectordir=exp/nnet3${nnet3_affix}/ivectors_${combined_train_set}_sp_hires
+  combined_ivectordir=exp/nnet3${nnet3_affix}/ivectors_${combined_train_set}_hires
   steps/online/nnet2/copy_ivector_dir.sh exp/nnet3${nnet3_affix}/ivectors_${train_set}_sp_hires $combined_ivectordir
-  for name in $aug_prefix; do
-    ivectordir=exp/nnet3${nnet3_affix}/ivectors_${train_set}_${name}_sp_hires
+  for name in $aug_affix; do
+    ivectordir=exp/nnet3${nnet3_affix}/ivectors_${train_set}_${name}_hires
     if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $ivectordir/storage ]; then
       utils/create_split_dir.pl /export/b1{5,6,7,8}/$USER/kaldi-data/egs/voices-$(date +'%m_%d_%H_%M')/s5/$ivectordir/storage $ivectordir/storage
     fi
 
     temp_data_root=${ivectordir}
     utils/data/modify_speaker_info.sh --utts-per-spk-max 2 \
-      data/${train_set}_${name}_sp_hires ${temp_data_root}/${train_set}_${name}_sp_hires_max2
+      data/${train_set}_${name}_hires ${temp_data_root}/${train_set}_${name}_hires_max2
 
     steps/online/nnet2/extract_ivectors_online.sh --cmd "$train_cmd" --nj $nj \
-      ${temp_data_root}/${train_set}_${name}_sp_hires_max2 \
+      ${temp_data_root}/${train_set}_${name}_hires_max2 \
       exp/nnet3${nnet3_affix}/extractor $ivectordir
     cat $ivectordir/ivector_online.scp >>$combined_ivectordir/ivector_online.scp
   done
-  utils/filter_scp.pl data/${combined_train_set}_sp_hires/utt2spk $combined_ivectordir/ivector_online.scp >$combined_ivectordir/ivector_online.scp.tmp
+  sort -k1,1 $combined_ivectordir/ivector_online.scp >$combined_ivectordir/ivector_online.scp.tmp
   rm -f $combined_ivectordir/ivector_online.scp 2>/dev/null
   mv $combined_ivectordir/ivector_online.scp.tmp $combined_ivectordir/ivector_online.scp
 fi
 
-if [ $stage -le 10 ]; then
+if [ $stage -le 10 ] && false; then
   num_ali_jobs=$(cat $ali_dir/num_jobs)
-  local/copy_ali_dir.sh --nj $num_ali_jobs --utt-prefixes $(echo $aug_prefix | sed 's/reverb/reverb1/g') \
-    data/${combined_train_set}_sp $ali_dir $combined_ali_dir
+  local/copy_ali_dir.sh --nj $num_ali_jobs --utt-prefixes $aug_prefix \
+    data/${combined_train_set} $ali_dir $combined_ali_dir
 fi
 
 exit 0

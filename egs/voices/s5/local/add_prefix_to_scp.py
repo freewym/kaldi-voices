@@ -23,9 +23,10 @@ def main():
         line = line.strip()
         id, val = line.split(None, 1)
         if re.match(r'^sp\d\.\d-', id):
-            head, remainder = id.split('-', 1)
-            for prefix in args.prefix:
-                print(head + '-' + prefix + '_' + remainder + ' ' + val)
+            pass
+            #head, remainder = id.split('-', 1)
+            #for prefix in args.prefix:
+            #    print(head + '-' + prefix + '_' + remainder + ' ' + val)
         else:
             for prefix in args.prefix:
                 print(prefix + '_' + id + ' ' + val)
