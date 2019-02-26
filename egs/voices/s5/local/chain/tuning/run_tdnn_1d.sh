@@ -73,7 +73,7 @@ fi
 local/nnet3/run_ivector_common.sh \
   --stage $stage --nj $nj \
   --train-set $train_set --gmm $gmm --combined-train-set $combined_train_set \
-  --aug-prefix $aug_prefix --aug-affix $aug_affix \
+  --aug-prefix "$aug_prefix" --aug-affix "$aug_affix" \
   --nnet3-affix "$nnet3_affix" || exit 1;
 
 
@@ -255,6 +255,8 @@ if [ $stage -le 17 ]; then
 
   for data in $test_sets; do
     (
+      opts=""
+      [ "$data" == "eval" ] && opts="$opts --skip-scoring true"
       steps/nnet3/decode.sh \
           --acwt 1.0 --post-decode-acwt 10.0 \
           --extra-left-context 0 --extra-right-context 0 \
@@ -263,11 +265,15 @@ if [ $stage -le 17 ]; then
           --frames-per-chunk $frames_per_chunk \
           --nj 75 --cmd "$decode_cmd"  --num-threads 4 \
           --online-ivector-dir exp/nnet3${nnet3_affix}/ivectors_${data}_hires \
-          $tree_dir/graph data/${data}_hires ${dir}/decode_${data} || exit 1
+          $opts $tree_dir/graph data/${data}_hires ${dir}/decode_${data} || exit 1
+
+      local/get_ctm.sh data/${data}_hires $tree_dir/graph $dir/decode_${data}
     ) || touch $dir/.error &
   done
   wait
   [ -f $dir/.error ] && echo "$0: there was a problem while decoding" && exit 1
 fi
+
+for x in $dir/decode_*; do grep WER $x/wer_* | utils/best_wer.sh ; done
 
 exit 0;

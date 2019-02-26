@@ -44,20 +44,35 @@ find -L $dev_dir/ -mindepth 5 -maxdepth 5 -iname '*.wav' | \
 cat $wav_scp | awk '{print $1,$1}' >$utt2spk
 cat $dev_dir/dev.subset-challenge.refs | sort -k1,1 >$trans
 
-for dset in train dev; do
+mkdir -p $dst/eval || exit 1;
+wav_scp=$dst/eval/wav.scp; [[ -f "$wav_scp" ]] && rm $wav_scp
+utt2spk=$dst/eval/utt2spk; [[ -f "$utt2spk" ]] && rm $utt2spk
+
+eval_dir=$src/Evaluation_Data/Automatic_Speech_Recognition/ASR_eval
+find -L $eval_dir/ -mindepth 1 -maxdepth 1 -iname '*.wav' | \
+  awk '{print $0, $0}' | \
+  awk '{n=split($1,a,"/"); printf "%s sox -r 16k -b 16 %s -t wav - |\n", a[n], $2}' |\
+  awk '{sub(/\.wav/, "", $1);print}' | sort -k1,1 >$wav_scp
+cat $wav_scp | awk '{print $1,$1}' >$utt2spk
+
+for dset in train dev eval; do
   utt2spk=$dst/$dset/utt2spk
   spk2utt=$dst/$dset/spk2utt
   utils/utt2spk_to_spk2utt.pl <$utt2spk >$spk2utt || exit 1
 
-  ntrans=$(wc -l <$dst/$dset/text)
-  nutt2spk=$(wc -l <$dst/$dset/utt2spk)
-  ! [ "$ntrans" -eq "$nutt2spk" ] && \
-    echo "Inconsistent #transcripts($ntrans) and #utt2spk($nutt2spk) in $dst/$dset" && exit 1;
+  if [ "$dset" != "eval" ]; then
+    ntrans=$(wc -l <$dst/$dset/text)
+    nutt2spk=$(wc -l <$dst/$dset/utt2spk)
+    ! [ "$ntrans" -eq "$nutt2spk" ] && \
+      echo "Inconsistent #transcripts($ntrans) and #utt2spk($nutt2spk) in $dst/$dset" && exit 1;
+  fi
 
   utt2dur=$dst/$dset/utt2dur; [[ -f "$utt2dur" ]] && rm $utt2dur
   utils/data/get_utt2dur.sh $dst/$dset 1>&2 || exit 1
 
-  utils/validate_data_dir.sh --no-feats $dst/$dset || exit 1;
+  opts=""
+  [ "$dset" == "eval" ] && opts="$opts --no-text"
+  utils/validate_data_dir.sh --no-feats $opts $dst/$dset || exit 1;
 
   echo "$0: successfully prepared data in $dst/$dset"
 done

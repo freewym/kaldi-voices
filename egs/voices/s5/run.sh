@@ -48,13 +48,15 @@ if [ $stage -le 4 ]; then
 fi
 
 if [ $stage -le 5 ]; then
-  for dset in train dev; do
+  for dset in train dev eval; do
     dir=data/$dset
     utils/fix_data_dir.sh $dir
     steps/make_mfcc.sh --cmd "$train_cmd" --nj 16 $dir
     steps/compute_cmvn_stats.sh $dir
     utils/fix_data_dir.sh $dir
-    utils/validate_data_dir.sh $dir
+    opts=""
+    [ "$dset" == "eval" ] && opts="$opts --no-text"
+    utils/validate_data_dir.sh $opts $dir
   done
 fi
 
