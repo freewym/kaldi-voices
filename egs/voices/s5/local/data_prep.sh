@@ -70,6 +70,9 @@ for dset in train dev eval; do
   utt2dur=$dst/$dset/utt2dur; [[ -f "$utt2dur" ]] && rm $utt2dur
   utils/data/get_utt2dur.sh $dst/$dset 1>&2 || exit 1
 
+  [ "$dset" == "dev" ] && paste -d' ' <(cat $dst/$dset/utt2dur | awk '{print $1" 1 "$1" 0.00 "$2}') <(cut -d' ' -f2- $dst/$dset/text) >$dst/$dset/stm
+  [ "$dset" == "dev" ] && cp /export/a16/dsnyder/english.glm $dst/$dset/glm
+
   opts=""
   [ "$dset" == "eval" ] && opts="$opts --no-text"
   utils/validate_data_dir.sh --no-feats $opts $dst/$dset || exit 1;

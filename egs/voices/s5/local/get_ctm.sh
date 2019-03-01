@@ -1,5 +1,10 @@
 #!/bin/bash
+# Copyright 2019  Johns Hopkins University (Author: Daniel Povey)
+#           2019  Yiming Wang
+# Apache 2.0
 
+cmd=run.pl
+decode_mbr=true
 word_ins_penalty=0.0,0.5,1.0
 min_lmwt=7
 max_lmwt=17
@@ -16,15 +21,31 @@ if [ $# -ne 3 ]; then
 fi
 
 data=$1
-lang_or_graph=$2
-decode_dir=$3
+lang=$2
+dir=$3
 
-for wip in $(echo $word_ins_penalty | sed 's/,/ /g'); do
-  for LMWT in $(seq $min_lmwt $max_lmwt); do
-    steps/get_ctm_fast.sh --cmd "$decode_cmd" --frame-shift 0.03 \
-      $data $lang_or_graph $decode_dir $decode_dir/score_${LMWT}_$wip
-  done
+model=$dir/../final.mdl # assume model one level up from decoding dir.
+
+for f in $lang/words.txt $lang/phones/word_boundary.int $model $dir/lat.1.gz; do
+  [ ! -f $f ] && echo "$0: expecting file $f to exist" && exit 1;
 done
 
+name=`basename $data`
 
+mkdir -p $dir/scoring/log
 
+for wip in $(echo $word_ins_penalty | sed 's/,/ /g'); do
+  (
+  $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/get_ctm.LMWT.${wip}.log \
+    mkdir -p $dir/score_LMWT_${wip}/ '&&' \
+    ACWT=\`perl -e \"print 1.0/LMWT\;\"\` '&&' \
+    lattice-add-penalty --word-ins-penalty=$wip "ark:gunzip -c $dir/lat.*.gz|" ark:- \| \
+    lattice-align-words $lang/phones/word_boundary.int $model ark:- ark:- \| \
+    lattice-to-ctm-conf --decode-mbr=$decode_mbr --acoustic-scale=\$ACWT  ark:- - \| \
+    utils/int2sym.pl -f 5 $lang/words.txt \
+    '>' $dir/score_LMWT_${wip}/$name.ctm || exit 1;
+  ) &
+done
+wait
+
+exit 0

@@ -215,6 +215,7 @@ if [ $stage -le 14 ]; then
     utils/data/get_reco2dur.sh data/musan_${name}
   done
 
+  cp data/train/utt2dur data/train/reco2dur
   # Augment with musan_noise
   steps/data/augment_data_dir_for_asr.py --utt-prefix "noise" --fg-interval 1 --fg-snrs "15:10:5:0" --fg-noise-dir "data/musan_noise" data/train data/train_noise
   cat data/train/utt2dur | awk '{print "noise_"$0}' >data/train_noise/utt2dur

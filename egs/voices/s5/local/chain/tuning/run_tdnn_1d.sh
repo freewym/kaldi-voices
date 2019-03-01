@@ -22,7 +22,7 @@ stage=0
 nj=30
 train_set=train
 combined_train_set=train_combined
-test_sets="dev"
+test_sets="dev eval"
 aug_affix="noise_reverb music_reverb babble_reverb"
 aug_prefix="rev1_noise rev1_music rev1_babble"
 gmm=tri4        # this is the source gmm-dir that we'll use for alignments; it
@@ -267,13 +267,12 @@ if [ $stage -le 17 ]; then
           --online-ivector-dir exp/nnet3${nnet3_affix}/ivectors_${data}_hires \
           $opts $tree_dir/graph data/${data}_hires ${dir}/decode_${data} || exit 1
 
-      local/get_ctm.sh data/${data}_hires $tree_dir/graph $dir/decode_${data}
+      [ "$data" == "dev" ] && grep Sum $dir/decode_$data/score_*/${data}_hires.ctm.filt.sys | utils/best_wer.sh 2>/dev/null || true
+      [ "$data" == "eval" ] && local/get_ctm.sh --cmd "$decode_cmd" data/${data}_hires $tree_dir/graph $dir/decode_${data} || true
     ) || touch $dir/.error &
   done
   wait
   [ -f $dir/.error ] && echo "$0: there was a problem while decoding" && exit 1
 fi
-
-for x in $dir/decode_*; do grep WER $x/wer_* | utils/best_wer.sh ; done
 
 exit 0;
