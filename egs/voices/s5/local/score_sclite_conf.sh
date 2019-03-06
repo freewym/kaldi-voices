@@ -45,6 +45,12 @@ name=`basename $data`; # e.g. eval2000
 
 mkdir -p $dir/scoring/log
 
+if [ -f $dir/../frame_subsampling_factor ]; then
+  factor=$(cat $dir/../frame_subsampling_factor) || exit 1
+  frame_shift_opt="--frame-shift=0.0$factor"
+  echo "$0: $dir/../frame_subsampling_factor exists, using $frame_shift_opt"
+fi
+
 if [ $stage -le 0 ]; then
   # the escaping gets a bit crazy here, sorry...
   for wip in $(echo $word_ins_penalty | sed 's/,/ /g'); do
@@ -54,7 +60,7 @@ if [ $stage -le 0 ]; then
       ACWT=\`perl -e \"print 1.0/LMWT\;\"\` '&&' \
       lattice-add-penalty --word-ins-penalty=$wip "ark:gunzip -c $dir/lat.*.gz|" ark:- \| \
       lattice-align-words $lang/phones/word_boundary.int $model ark:- ark:- \| \
-      lattice-to-ctm-conf --decode-mbr=$decode_mbr --acoustic-scale=\$ACWT  ark:- - \| \
+      lattice-to-ctm-conf $frame_shift_opt --decode-mbr=$decode_mbr --acoustic-scale=\$ACWT  ark:- - \| \
       utils/int2sym.pl -f 5 $lang/words.txt \
       '>' $dir/score_LMWT_${wip}/$name.ctm || exit 1;
     ) &
